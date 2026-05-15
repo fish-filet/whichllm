@@ -15,15 +15,32 @@ Auto-detects your GPU/CPU/RAM and ranks the top models from HuggingFace that fit
 
 ## Why whichllm?
 
-**One command. Real answers.** No TUI to learn, no keybindings to memorize.
+Fitting a model into your VRAM is the easy part. The hard part is knowing
+**which of the models that fit is actually the best** — and that is what
+whichllm is built to get right.
 
-| | whichllm | Others (TUI-based) |
-|---|---|---|
-| **Getting results** | `whichllm` — done | Launch TUI → navigate → search → filter |
-| **Model data** | Live from HuggingFace API | Static built-in database |
-| **Benchmarks** | Real eval scores with confidence | Fixed quality scores |
-| **Scriptable** | `whichllm --json \| jq` | Requires special flags |
-| **Learning curve** | Zero | Vim keybindings required |
+- **Evidence-based ranking, not a size heuristic** — The top pick is
+  chosen from merged real benchmarks (LiveBench, Artificial Analysis,
+  Aider, multimodal/vision, Chatbot Arena ELO, Open LLM Leaderboard) —
+  never "the biggest model that happens to fit."
+- **Recency-aware** — Stale leaderboards are demoted along each model's
+  lineage, so a 2024 model can't outrank a current-generation one on an
+  outdated score. The benchmark snapshot date is printed under every
+  ranking, so a stale recommendation is self-evident instead of silently
+  trusted.
+- **Evidence-graded and guarded** — Every score is tagged
+  `direct` / `variant` / `base` / `interpolated` / `self-reported` and
+  discounted by confidence. Fabricated uploader claims and cross-family
+  inheritance (a small fork borrowing its much larger base's score) are
+  actively rejected.
+- **Architecture-aware estimates** — VRAM = weights + GQA KV cache +
+  activation + overhead; speed is bandwidth-bound with per-quant
+  efficiency, per-backend factors, MoE active-vs-total split, and
+  unified-memory vs discrete-PCIe partial-offload modeling.
+- **One command, scriptable** — `whichllm` prints the answer; add
+  `--json | jq` for pipelines. No TUI, no keybindings to memorize.
+- **Live data** — Models fetched directly from the HuggingFace API, with
+  curated frozen fallbacks for offline or rate-limited use.
 
 ## Features
 
@@ -183,18 +200,23 @@ alias bestllm='whichllm --top 1 --json | jq -r ".models[0].model_id"'
 
 ## Scoring
 
-Each model gets a score from 0 to 100.
+Each model gets a 0-100 score. Benchmark quality and size form the core;
+evidence confidence and runtime fit then scale it, with speed, source
+trust, and popularity as adjustments.
 
-| Factor | Points | Description |
+| Factor | Effect | Description |
 |--------|--------|-------------|
-| Model size | 0-40 | Larger models generally produce better output |
-| Benchmark | 0-10 | Arena ELO / Open LLM Leaderboard scores |
-| Speed | 0-20 | Higher tok/s = more practical to use |
-| Source trust | -5 to +5 | Official repos get a bonus, repackagers get a penalty |
-| Popularity | 0-3 | Downloads and likes as tiebreaker |
+| Benchmark quality | core | Merged LiveBench / Artificial Analysis / Aider / Vision / Arena ELO / Open LLM Leaderboard, weighted by source confidence |
+| Model size | up to 35 | `log2`-scaled world-knowledge proxy (MoE uses total params) |
+| Quantization | × penalty | Lower-bit quants discounted multiplicatively |
+| Evidence confidence | ×0.55–1.0 | none / self-reported ×0.55, inherited ×0.78, direct full |
+| Runtime fit | ×0.50–1.0 | partial-offload ×0.72, CPU-only ×0.50 |
+| Speed | -8 to +8 | Usability gate vs a fit-dependent tok/s floor |
+| Source trust | -5 to +5 | Official-org bonus, known-repackager penalty |
+| Popularity | tie-breaker | Downloads/likes; weight shrinks as evidence strengthens |
 
 Score markers:
-- **`~`** (yellow) — No direct benchmark yet. Score estimated from the model family
+- **`~`** (yellow) — No direct benchmark; score inherited/interpolated from the model family
 - **`?`** (yellow) — No benchmark data available
 
 ## How it works
@@ -205,12 +227,21 @@ Score markers:
    - Text-generation (downloads + recently updated)
    - GGUF-filtered (separate query for coverage)
    - Vision models (`image-text-to-text`) when `--profile vision` or `any`
-2. **Benchmark sources** — Chatbot Arena ELO (priority) + Open LLM Leaderboard
-3. **Benchmark evidence** — Four levels of confidence:
+2. **Benchmark sources** — *Current tier* (LiveBench, Artificial Analysis
+   Index, Aider) merged live when reachable, plus a curated multimodal /
+   vision index; *frozen tier* (Open LLM Leaderboard v2, Chatbot Arena
+   ELO). Tiers have separate caps and lineage-aware recency demotion so
+   stale leaderboards stop over-rewarding older generations.
+3. **Benchmark evidence** — Five resolution levels, increasingly discounted:
    - `direct` — Exact model ID match
    - `variant` — Suffix-stripped or -Instruct variant
    - `base_model` — Base model from cardData
    - `line_interp` — Size-aware interpolation within model family
+   - `self_reported` — Uploader-claimed eval (heavily discounted)
+
+   Inheritance is rejected when a model's params diverge more than 2× from
+   its family's dominant member, catching draft / MTP / abliterated forks
+   that share a `family_id` with a much larger base.
 4. **Cache** — `~/.cache/whichllm/`:
    - `models.json` — 6h TTL
    - `benchmark.json` — 24h TTL
