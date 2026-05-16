@@ -297,7 +297,9 @@ def test_run_exits_gracefully():
 def test_transformers_chat_script_passes_tokenizer_mapping_to_generate():
     model = _make_model(model_id="org/Test-7B")
 
-    script = _generate_chat_script(model, variant=None, context_length=4096, cpu_only=False)
+    script = _generate_chat_script(
+        model, variant=None, context_length=4096, cpu_only=False
+    )
 
     assert "return_dict=True" in script
     assert "kwargs=dict(**inputs, max_new_tokens=512, streamer=streamer)" in script
