@@ -781,48 +781,64 @@ print("\\nBye!")
     device_map = '"cpu"' if cpu_only else '"auto"'
     dtype = "torch.float32" if cpu_only else '"auto"'
     return f'''\
+import shutil
+import tempfile
 import torch
 from threading import Thread
 from transformers import AutoModelForCausalLM, AutoTokenizer, TextIteratorStreamer
 
 model_id = "{model.id}"
-print(f"Loading {{model_id}}...")
-tokenizer = AutoTokenizer.from_pretrained(model_id, trust_remote_code=True)
-model = AutoModelForCausalLM.from_pretrained(
-    model_id, device_map={device_map}, torch_dtype={dtype}, trust_remote_code=True,
-)
-print("Ready! Type 'exit' to quit.\\n")
-messages = []
-while True:
-    try:
-        user_input = input("> ")
-    except (KeyboardInterrupt, EOFError):
-        break
-    if user_input.strip().lower() in ("exit", "quit", "q"):
-        break
-    if not user_input.strip():
-        continue
-    messages.append({{"role": "user", "content": user_input}})
-    inputs = tokenizer.apply_chat_template(
-        messages,
-        return_tensors="pt",
-        return_dict=True,
-        add_generation_prompt=True,
-    ).to(model.device)
-    streamer = TextIteratorStreamer(tokenizer, skip_prompt=True, skip_special_tokens=True)
-    thread = Thread(
-        target=model.generate,
-        kwargs=dict(**inputs, max_new_tokens=512, streamer=streamer),
+offload_folder = tempfile.mkdtemp(prefix="whichllm_transformers_offload_")
+try:
+    print(f"Loading {{model_id}}...")
+    tokenizer = AutoTokenizer.from_pretrained(model_id, trust_remote_code=True)
+    model = AutoModelForCausalLM.from_pretrained(
+        model_id,
+        device_map={device_map},
+        torch_dtype={dtype},
+        trust_remote_code=True,
+        offload_folder=offload_folder,
     )
-    thread.start()
-    full = ""
-    for text in streamer:
-        print(text, end="", flush=True)
-        full += text
-    thread.join()
-    print()
-    messages.append({{"role": "assistant", "content": full}})
-print("\\nBye!")
+    print("Ready! Type 'exit' to quit.\\n")
+    messages = []
+    while True:
+        try:
+            user_input = input("> ")
+        except (KeyboardInterrupt, EOFError):
+            break
+        if user_input.strip().lower() in ("exit", "quit", "q"):
+            break
+        if not user_input.strip():
+            continue
+        messages.append({{"role": "user", "content": user_input}})
+        inputs = tokenizer.apply_chat_template(
+            messages,
+            return_tensors="pt",
+            return_dict=True,
+            add_generation_prompt=True,
+        ).to(model.device)
+        streamer = TextIteratorStreamer(
+            tokenizer, skip_prompt=True, skip_special_tokens=True
+        )
+        thread = Thread(
+            target=model.generate,
+            kwargs=dict(**inputs, max_new_tokens=512, streamer=streamer),
+        )
+        thread.start()
+        full = ""
+        for text in streamer:
+            print(text, end="", flush=True)
+            full += text
+        thread.join()
+        print()
+        messages.append({{"role": "assistant", "content": full}})
+    print("\\nBye!")
+finally:
+    try:
+        del model
+    except NameError:
+        pass
+    shutil.rmtree(offload_folder, ignore_errors=True)
 '''
 
 

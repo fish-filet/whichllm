@@ -492,6 +492,18 @@ def test_transformers_chat_script_passes_tokenizer_mapping_to_generate():
     assert "kwargs=dict(input_ids=inputs" not in script
 
 
+def test_transformers_chat_script_provides_disk_offload_folder():
+    model = _make_model(model_id="org/Test-7B")
+
+    script = _generate_chat_script(
+        model, variant=None, context_length=4096, cpu_only=False
+    )
+
+    assert 'tempfile.mkdtemp(prefix="whichllm_transformers_offload_")' in script
+    assert "offload_folder=offload_folder" in script
+    assert "shutil.rmtree(offload_folder, ignore_errors=True)" in script
+
+
 def test_run_auto_pick_resolves_ranked_gguf_before_launch(monkeypatch):
     selected = ModelInfo(
         id="Qwen/Qwen3.6-27B",
