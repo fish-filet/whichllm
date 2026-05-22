@@ -17,19 +17,20 @@ Auto-detects your GPU/CPU/RAM and ranks the top models from HuggingFace that fit
 Run the recommendation command once, with no project setup.
 
 ```bash
-uvx whichllm
+uvx whichllm@latest
 ```
 
 Simulate a GPU before you buy hardware.
 
 ```bash
-uvx whichllm --gpu "RTX 4090"
+uvx whichllm@latest --gpu "RTX 4090"
 ```
 
 Install it when you use it often.
 
 ```bash
 uv tool install whichllm
+uv tool upgrade whichllm  # update an existing install
 ```
 
 Other install paths.
@@ -42,7 +43,7 @@ pip install whichllm
 ## Common workflows
 
 After install, run `whichllm` directly. For one-off runs, replace `whichllm`
-with `uvx whichllm`.
+with `uvx whichllm@latest`.
 
 ```bash
 # Best models for this machine
